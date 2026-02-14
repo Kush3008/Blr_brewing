@@ -21,8 +21,17 @@ jobs:
 
       - name: Fetch Butano
         run: |
-          git clone --depth 1 https://github.com/GValiente/butano.git /butano
-          echo "BUTANO_PATH=/butano" >> $GITHUB_ENV
+          git clone --depth 1 https://github.com/GValiente/butano.git butano
+          echo "BUTANO_PATH=${GITHUB_WORKSPACE}/butano" >> $GITHUB_ENV
+
+      - name: Debug Butano path (prove tools/makefile exists)
+        run: |
+          echo "BUTANO_PATH=$BUTANO_PATH"
+          ls -la "$BUTANO_PATH"
+          ls -la "$BUTANO_PATH/butano"
+          ls -la "$BUTANO_PATH/butano/tools" || true
+          find "$BUTANO_PATH" -maxdepth 4 -name makefile -o -name "*.mak" | head -n 50
+
 
       - name: Generate assets
         run: |
