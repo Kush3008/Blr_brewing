@@ -51,6 +51,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bangalore-love-quest-gba
-          path: bangalore_love_quest.gba
+          path: build/*.gba
           if-no-files-found: error
 
