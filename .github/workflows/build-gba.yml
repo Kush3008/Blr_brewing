@@ -1,0 +1,89 @@
+name: Build GBA ROM
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-rom:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install host tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git python3 make
+
+      - name: Setup Butano
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CANDIDATE1="$GITHUB_WORKSPACE/butano"
+          CANDIDATE2="$RUNNER_TEMP/butano"
+
+          if [ -d "$CANDIDATE1" ]; then
+            BUTANO_PATH="$CANDIDATE1"
+          else
+            rm -rf "$CANDIDATE2"
+            git clone --depth 1 https://github.com/GValiente/butano.git "$CANDIDATE2"
+            BUTANO_PATH="$CANDIDATE2"
+          fi
+
+          if [ -f "$BUTANO_PATH/tools/makefile" ]; then
+            echo "Using Butano makefile: $BUTANO_PATH/tools/makefile"
+          elif [ -f "$BUTANO_PATH/butano/tools/makefile" ]; then
+            echo "Using Butano makefile: $BUTANO_PATH/butano/tools/makefile"
+          else
+            echo "Butano setup failed: makefile not found under $BUTANO_PATH"
+            echo "Expected one of:"
+            echo "  - $BUTANO_PATH/tools/makefile"
+            echo "  - $BUTANO_PATH/butano/tools/makefile"
+            echo "Top-level entries in BUTANO_PATH:" && ls -lah "$BUTANO_PATH"
+            exit 1
+          fi
+
+          echo "BUTANO_PATH=$BUTANO_PATH" >> "$GITHUB_ENV"
+
+      - name: Inspect Butano checkout
+        run: |
+          echo "BUTANO_PATH=$BUTANO_PATH"
+          find "$BUTANO_PATH" -maxdepth 2 -type d | sort | head -n 60
+
+      - name: Generate source assets
+        run: python3 tools/gen_assets.py
+
+      - name: Preflight raw assets
+        run: |
+          test -f assets/graphics/bangalore_street.png || (echo "Missing background PNG" && exit 1)
+          test -f assets/graphics/kush.png || (echo "Missing player sprite PNG" && exit 1)
+          test -f assets/audio/confirm.wav || (echo "Missing confirm SFX" && exit 1)
+
+      - name: Build ROM
+        run: make clean && make -j2
+
+      - name: Validate generated headers
+        run: |
+          echo "Generated headers under build/:"
+          find build -type f -name 'bn_*items*.h' | sort
+          find build -type f -name 'bn_regular_bg_items_bangalore_street.h' | grep -q . || (echo "Missing generated header: bn_regular_bg_items_bangalore_street.h" && exit 1)
+          find build -type f -name 'bn_sprite_items_kush.h' | grep -q . || (echo "Missing generated header: bn_sprite_items_kush.h" && exit 1)
+          find build -type f -name 'bn_sound_items.h' | grep -q . || (echo "Missing generated header: bn_sound_items.h" && exit 1)
+
+      - name: Validate ROM output
+        run: |
+          ls -lah build
+          test -f build/bangalore_love_quest.gba || (echo "ROM not found at build/bangalore_love_quest.gba" && exit 1)
+
+      - name: Upload ROM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bangalore-love-quest-gba
+          path: build/bangalore_love_quest.gba
+          if-no-files-found: error
