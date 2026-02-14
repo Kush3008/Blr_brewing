@@ -1,0 +1,7 @@
+build/
+*.elf
+*.gba
+__pycache__/
+assets/graphics/*.png
+assets/audio/*.wav
+assets/.generated
