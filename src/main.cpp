@@ -7,7 +7,7 @@
 #include "bn_regular_bg_items_bangalore_street.h"
 #include "bn_regular_bg_ptr.h"
 #include "bn_sound_items.h"
-#include "bn_sprite_items_common_variable_8x16_font.h"
+#include "bn_sprite_items_variable_8x16_font.h"
 #include "bn_sprite_items_gift_icons.h"
 #include "bn_sprite_items_heart_blue.h"
 #include "bn_sprite_items_heart_purple.h"
@@ -441,7 +441,7 @@ int main()
 {
     bn::core::init();
 
-    bn::sprite_text_generator text_generator(bn::sprite_items::common_variable_8x16_font);
+    bn::sprite_text_generator text_generator(bn::sprite_items::variable_8x16_font);
     text_generator.set_center_alignment();
 
     blq::SaveData save_data;

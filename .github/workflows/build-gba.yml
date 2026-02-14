@@ -1,73 +1,59 @@
 name: Build GBA ROM
 
 on:
-  workflow_dispatch:
   push:
-    branches: ["main"]
+  pull_request:
 
 jobs:
-  build:
+  build-rom:
     runs-on: ubuntu-latest
-    container: devkitpro/devkitarm:20230928
+    container:
+      image: devkitpro/devkitarm:latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install build deps
+      - name: Install host tools
         run: |
           apt-get update
-          apt-get install -y git make python3
+          apt-get install -y --no-install-recommends git python3 make
 
-      - name: Fetch Butano
+      - name: Checkout Butano
         run: |
-          git clone --depth 1 https://github.com/GValiente/butano.git butano
-          echo "BUTANO_PATH=${GITHUB_WORKSPACE}/butano" >> $GITHUB_ENV
+          git clone --depth 1 https://github.com/GValiente/butano.git "$GITHUB_WORKSPACE/butano"
 
-      - name: Debug Butano path (prove tools/makefile exists)
+      - name: Set BUTANO_PATH
+        run: echo "BUTANO_PATH=$GITHUB_WORKSPACE/butano" >> "$GITHUB_ENV"
+
+      - name: Generate source assets
+        run: python3 tools/gen_assets.py
+
+      - name: Preflight raw assets
         run: |
-          echo "BUTANO_PATH=$BUTANO_PATH"
-          ls -la "$BUTANO_PATH"
-          ls -la "$BUTANO_PATH/butano"
-          ls -la "$BUTANO_PATH/butano/tools" || true
-          find "$BUTANO_PATH" -maxdepth 4 -name makefile -o -name "*.mak" | head -n 50
-
-
-      - name: Generate assets
-        run: |
-          python3 tools/gen_assets.py
-
-      - name: Ensure default font exists (common/variable_8x16_font.bmp)
-        run: |
-          mkdir -p assets/graphics/common
-
-          # If your repo doesn't already have the font, copy it from the Butano checkout:
-          if [ ! -f assets/graphics/common/variable_8x16_font.bmp ]; then
-            FONT_SRC=$(find butano -type f -name "variable_8x16_font.bmp" | head -n 1)
-            echo "FONT_SRC=$FONT_SRC"
-            if [ -z "$FONT_SRC" ]; then
-              echo "Could not find variable_8x16_font.bmp inside butano checkout" && exit 1
-            fi
-            cp "$FONT_SRC" assets/graphics/common/variable_8x16_font.bmp
-          fi
-
-          ls -la assets/graphics/common
-
-
-      - name: Verify graphics exist
-        run: |
-          ls -la assets/graphics || true
-          find assets/graphics -maxdepth 1 -type f -print || true
-
+          test -f assets/graphics/bangalore_street.png || (echo "Missing background PNG" && exit 1)
+          test -f assets/graphics/kush.png || (echo "Missing player sprite PNG" && exit 1)
+          test -f assets/audio/confirm.wav || (echo "Missing confirm SFX" && exit 1)
 
       - name: Build ROM
+        run: make clean && make -j2
+
+      - name: Validate generated headers
         run: |
-          make -j2
+          echo "Generated headers under build/:"
+          find build -type f -name 'bn_*items*.h' | sort
+          find build -type f -name 'bn_regular_bg_items_bangalore_street.h' | grep -q . || (echo "Missing generated header: bn_regular_bg_items_bangalore_street.h" && exit 1)
+          find build -type f -name 'bn_sprite_items_kush.h' | grep -q . || (echo "Missing generated header: bn_sprite_items_kush.h" && exit 1)
+          find build -type f -name 'bn_sound_items.h' | grep -q . || (echo "Missing generated header: bn_sound_items.h" && exit 1)
+
+      - name: Validate ROM output
+        run: |
+          ls -lah build
+          test -f build/bangalore_love_quest.gba || (echo "ROM not found at build/bangalore_love_quest.gba" && exit 1)
 
       - name: Upload ROM artifact
         uses: actions/upload-artifact@v4
         with:
           name: bangalore-love-quest-gba
-          path: build/*.gba
+          path: build/bangalore_love_quest.gba
           if-no-files-found: error
-

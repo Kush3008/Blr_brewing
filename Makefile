@@ -1,31 +1,20 @@
-# Project name (also becomes the output ROM name)
-TARGET := bangalore_love_quest
-
-# Build dir
+PROJECT := bangalore_love_quest
 BUILD := build
-
-# Source/include folders
 SOURCES := src
 INCLUDES := include
+ASSETS := assets
 
-# Asset folders (your tools/gen_assets.py writes here)
-GRAPHICS := assets/graphics
-AUDIO := assets/audio
-DMGAUDIO :=
-DATA :=
+GAME_TITLE := Bangalore Love Quest
+GAME_CODE := BLQX
+GAME_MAKER := 00
 
-# GBA header metadata (limits: ROMTITLE max 12 chars, ROMCODE 4 chars)
-ROMTITLE := BLRLOVEQUEST
-ROMCODE := BLQ1
+ASSET_STAMP := assets/.generated
 
-# Butano path:
-# In GitHub Actions you set BUTANO_PATH to the cloned butano repo root.
-# The actual engine folder is: $(BUTANO_PATH)/butano
-LIBBUTANO := $(BUTANO_PATH)/butano
-LIBBUTANOABS := $(realpath $(LIBBUTANO))
+$(ASSET_STAMP): tools/gen_assets.py
+	python3 tools/gen_assets.py
+	@mkdir -p assets
+	@touch $(ASSET_STAMP)
 
-# Ensure python command exists in your container
-PYTHON := python3
+assets: $(ASSET_STAMP)
 
-# Include Butano build system
-include $(LIBBUTANOABS)/butano.mak
+include $(BUTANO_PATH)/tools/makefile

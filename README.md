@@ -61,6 +61,8 @@ git clone https://github.com/GValiente/butano.git ~/butano
 export BUTANO_PATH=~/butano
 ```
 
+`BUTANO_PATH` must point to the **Butano repository root** (the folder that contains `tools/makefile`).
+
 (Windows MSYS2 example)
 
 ```bash
