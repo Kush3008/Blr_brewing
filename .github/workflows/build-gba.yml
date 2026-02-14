@@ -37,6 +37,23 @@ jobs:
         run: |
           python3 tools/gen_assets.py
 
+      - name: Ensure default font exists (common/variable_8x16_font.bmp)
+        run: |
+          mkdir -p assets/graphics/common
+
+          # If your repo doesn't already have the font, copy it from the Butano checkout:
+          if [ ! -f assets/graphics/common/variable_8x16_font.bmp ]; then
+            FONT_SRC=$(find butano -type f -name "variable_8x16_font.bmp" | head -n 1)
+            echo "FONT_SRC=$FONT_SRC"
+            if [ -z "$FONT_SRC" ]; then
+              echo "Could not find variable_8x16_font.bmp inside butano checkout" && exit 1
+            fi
+            cp "$FONT_SRC" assets/graphics/common/variable_8x16_font.bmp
+          fi
+
+          ls -la assets/graphics/common
+
+
       - name: Verify graphics exist
         run: |
           ls -la assets/graphics || true
