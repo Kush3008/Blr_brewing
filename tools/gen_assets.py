@@ -163,6 +163,65 @@ def main():
     gen_audio()
     print('generated assets')
 
+import os, struct, json
+
+def write_bmp_8bpp(path, w=256, h=256):
+    # 8-bit BMP with a simple gradient + grayscale palette (no external libs)
+    row_size = (w + 3) & ~3  # pad to 4 bytes
+    pixel_data = bytearray()
+
+    # BMP is bottom-up if height is positive
+    for y in range(h):
+        row = bytearray(((x + (h - 1 - y)) % 256) for x in range(w))
+        row += b"\x00" * (row_size - w)
+        pixel_data += row
+
+    palette = bytearray()
+    for i in range(256):
+        palette += struct.pack("<BBBB", i, i, i, 0)  # B,G,R,0
+
+    bfOffBits = 14 + 40 + len(palette)
+    bfSize = bfOffBits + len(pixel_data)
+
+    file_header = struct.pack("<2sIHHI", b"BM", bfSize, 0, 0, bfOffBits)
+    info_header = struct.pack(
+        "<IIIHHIIIIII",
+        40,         # header size
+        w, h,       # width, height
+        1,          # planes
+        8,          # bpp
+        0,          # compression (BI_RGB)
+        len(pixel_data),
+        2835, 2835, # ppm
+        256,        # colors used
+        0
+    )
+
+    with open(path, "wb") as f:
+        f.write(file_header)
+        f.write(info_header)
+        f.write(palette)
+        f.write(pixel_data)
+
+def ensure_bangalore_street_bg():
+    os.makedirs("assets/graphics", exist_ok=True)
+
+    bmp_path = "assets/graphics/bangalore_street.bmp"
+    json_path = "assets/graphics/bangalore_street.json"
+
+    if not os.path.exists(bmp_path):
+        write_bmp_8bpp(bmp_path, 256, 256)
+
+    # Tell Butano this image is a REGULAR BG so it generates:
+    # bn_regular_bg_items_bangalore_street.h
+    cfg = {
+        "type": "regular_bg",
+        "bpp_mode": "bpp_8",
+        "compression": "none"
+    }
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
 
 if __name__ == '__main__':
+    ensure_bangalore_street_bg()
     main()
