@@ -1,0 +1,39 @@
+name: Build GBA ROM
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm:20230928
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          apt-get update
+          apt-get install -y git make python3
+
+      - name: Fetch Butano
+        run: |
+          git clone --depth 1 https://github.com/GValiente/butano.git /butano
+          echo "BUTANO_PATH=/butano" >> $GITHUB_ENV
+
+      - name: Generate assets
+        run: |
+          python3 tools/gen_assets.py
+
+      - name: Build ROM
+        run: |
+          make -j2
+
+      - name: Upload ROM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bangalore-love-quest-gba
+          path: build/bangalore_love_quest.gba
