@@ -24,27 +24,32 @@ jobs:
       - name: Install host tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates python3 make findutils
+          apt-get install -y --no-install-recommends ca-certificates git python3 make findutils
 
-      - name: Configure environment
+      - name: Setup Butano
         run: |
-          echo "BUTANO_PATH=$GITHUB_WORKSPACE/butano" >> "$GITHUB_ENV"
-          test -f "$GITHUB_WORKSPACE/butano/tools/makefile"
+          set -euo pipefail
+          BUTANO_PATH="$GITHUB_WORKSPACE/butano"
+          rm -rf "$BUTANO_PATH"
+          git clone --depth 1 https://github.com/GValiente/butano.git "$BUTANO_PATH"
+          test -f "$BUTANO_PATH/tools/makefile"
 
       - name: Generate source assets
         run: python3 tools/gen_assets.py
 
       - name: Build ROM
-        run: make clean && make -j2
+        run: |
+          BUTANO_PATH="$GITHUB_WORKSPACE/butano" make clean
+          BUTANO_PATH="$GITHUB_WORKSPACE/butano" make -j2
 
       - name: Validate and stage ROM artifact
         run: |
           mkdir -p dist
-          ROM_PATH="$(find . -maxdepth 3 -type f -name '*.gba' | head -n 1)"
+          ROM_PATH="$(find . -maxdepth 4 -type f -name '*.gba' | head -n 1)"
           if [ -z "$ROM_PATH" ]; then
             echo "No .gba output found"
             echo "Build tree:"
-            find build -maxdepth 3 -type f | sort || true
+            find build -maxdepth 4 -type f | sort || true
             exit 1
           fi
           cp "$ROM_PATH" dist/bangalore_love_quest.gba
