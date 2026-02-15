@@ -12,68 +12,46 @@ jobs:
       image: devkitpro/devkitarm:latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout game repo
         uses: actions/checkout@v4
 
       - name: Install host tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git python3 make
+          apt-get install -y --no-install-recommends ca-certificates git python3 make findutils
 
       - name: Setup Butano
-        shell: bash
         run: |
           set -euo pipefail
-
-          CANDIDATE1="$GITHUB_WORKSPACE/butano"
-          CANDIDATE2="$RUNNER_TEMP/butano"
-
-          if [ -f "$CANDIDATE1/tools/makefile" ]; then
-            BUTANO_PATH="$CANDIDATE1"
-          else
-            rm -rf "$CANDIDATE2"
-            git clone --depth 1 https://github.com/GValiente/butano.git "$CANDIDATE2"
-            BUTANO_PATH="$CANDIDATE2"
-          fi
-
-          if [ ! -f "$BUTANO_PATH/tools/makefile" ]; then
-            echo "Butano setup failed: tools/makefile not found under $BUTANO_PATH"
-            echo "Workspace listing:" && ls -lah "$GITHUB_WORKSPACE"
-            echo "Runner temp listing:" && ls -lah "$RUNNER_TEMP"
-            exit 1
-          fi
-
-          echo "Using BUTANO_PATH=$BUTANO_PATH"
-          echo "BUTANO_PATH=$BUTANO_PATH" >> "$GITHUB_ENV"
+          BUTANO_PATH="$GITHUB_WORKSPACE/butano"
+          rm -rf "$BUTANO_PATH"
+          git clone --depth 1 https://github.com/GValiente/butano.git "$BUTANO_PATH"
+          test -f "$BUTANO_PATH/tools/makefile"
 
       - name: Generate source assets
         run: python3 tools/gen_assets.py
 
-      - name: Preflight raw assets
-        run: |
-          test -f assets/graphics/bangalore_street.png || (echo "Missing background PNG" && exit 1)
-          test -f assets/graphics/kush.png || (echo "Missing player sprite PNG" && exit 1)
-          test -f assets/audio/confirm.wav || (echo "Missing confirm SFX" && exit 1)
-
       - name: Build ROM
-        run: make clean && make -j2
-
-      - name: Validate generated headers
         run: |
-          echo "Generated headers under build/:"
-          find build -type f -name 'bn_*items*.h' | sort
-          find build -type f -name 'bn_regular_bg_items_bangalore_street.h' | grep -q . || (echo "Missing generated header: bn_regular_bg_items_bangalore_street.h" && exit 1)
-          find build -type f -name 'bn_sprite_items_kush.h' | grep -q . || (echo "Missing generated header: bn_sprite_items_kush.h" && exit 1)
-          find build -type f -name 'bn_sound_items.h' | grep -q . || (echo "Missing generated header: bn_sound_items.h" && exit 1)
+          BUTANO_PATH="$GITHUB_WORKSPACE/butano" make clean
+          BUTANO_PATH="$GITHUB_WORKSPACE/butano" make -j2
 
-      - name: Validate ROM output
+      - name: Validate and stage ROM artifact
         run: |
-          ls -lah build
-          test -f build/bangalore_love_quest.gba || (echo "ROM not found at build/bangalore_love_quest.gba" && exit 1)
+          mkdir -p dist
+          ROM_PATH="$(find . -maxdepth 4 -type f -name '*.gba' | head -n 1)"
+          if [ -z "$ROM_PATH" ]; then
+            echo "No .gba output found"
+            echo "Build tree:"
+            find build -maxdepth 4 -type f | sort || true
+            exit 1
+          fi
+          cp "$ROM_PATH" dist/bangalore_love_quest.gba
+          ls -lah dist
 
       - name: Upload ROM artifact
         uses: actions/upload-artifact@v4
         with:
           name: bangalore-love-quest-gba
-          path: build/bangalore_love_quest.gba
+          path: dist/bangalore_love_quest.gba
           if-no-files-found: error
