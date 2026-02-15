@@ -3,6 +3,7 @@ name: Build GBA ROM
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build-rom:
@@ -17,14 +18,47 @@ jobs:
       - name: Install host tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git python3 make
+          apt-get install -y --no-install-recommends ca-certificates git python3 make findutils
 
-      - name: Checkout Butano
+      - name: Setup Butano
+        shell: bash
         run: |
-          git clone --depth 1 https://github.com/GValiente/butano.git "$GITHUB_WORKSPACE/butano"
+          set -euo pipefail
 
-      - name: Set BUTANO_PATH
-        run: echo "BUTANO_PATH=$GITHUB_WORKSPACE/butano" >> "$GITHUB_ENV"
+          CANDIDATE1="$GITHUB_WORKSPACE/butano"
+          CANDIDATE2="$RUNNER_TEMP/butano"
+
+          if [ -d "$CANDIDATE1" ]; then
+            BUTANO_PATH="$CANDIDATE1"
+          else
+            rm -rf "$CANDIDATE2"
+            git clone --depth 1 https://github.com/GValiente/butano.git "$CANDIDATE2"
+            BUTANO_PATH="$CANDIDATE2"
+          fi
+
+          BUTANO_MAKEFILE_PATH=""
+          while IFS= read -r f; do
+            BUTANO_MAKEFILE_PATH="$f"
+            break
+          done < <(find "$BUTANO_PATH" -type f \( -path '*/tools/makefile' -o -path '*/tools/Makefile' \) | sort)
+
+          if [ -z "$BUTANO_MAKEFILE_PATH" ]; then
+            echo "Butano setup failed: could not find a tools/makefile in $BUTANO_PATH"
+            echo "Top-level entries in BUTANO_PATH:" && ls -lah "$BUTANO_PATH"
+            echo "Sample tree (depth 3):" && find "$BUTANO_PATH" -maxdepth 3 -type d | sort | head -n 200
+            exit 1
+          fi
+
+          echo "Using BUTANO_PATH=$BUTANO_PATH"
+          echo "Using BUTANO_MAKEFILE_PATH=$BUTANO_MAKEFILE_PATH"
+          echo "BUTANO_PATH=$BUTANO_PATH" >> "$GITHUB_ENV"
+          echo "BUTANO_MAKEFILE_PATH=$BUTANO_MAKEFILE_PATH" >> "$GITHUB_ENV"
+
+      - name: Inspect Butano checkout
+        run: |
+          echo "BUTANO_PATH=$BUTANO_PATH"
+          echo "BUTANO_MAKEFILE_PATH=$BUTANO_MAKEFILE_PATH"
+          find "$BUTANO_PATH" -maxdepth 2 -type d | sort | head -n 60
 
       - name: Generate source assets
         run: python3 tools/gen_assets.py
