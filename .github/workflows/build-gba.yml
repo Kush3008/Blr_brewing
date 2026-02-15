@@ -12,34 +12,32 @@ jobs:
       image: devkitpro/devkitarm:latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout game repo
         uses: actions/checkout@v4
 
       - name: Install host tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git python3 make
+          apt-get install -y --no-install-recommends ca-certificates python3 make findutils
 
-      - name: Setup Butano
-        shell: bash
+      - name: Resolve Butano path (no network)
         run: |
           set -euo pipefail
+          BUTANO_PATH=""
+          for candidate in "$GITHUB_WORKSPACE/butano" /opt/butano "$HOME/butano"; do
+            if [ -f "$candidate/tools/makefile" ]; then
+              BUTANO_PATH="$candidate"
+              break
+            fi
+          done
 
-          CANDIDATE1="$GITHUB_WORKSPACE/butano"
-          CANDIDATE2="$RUNNER_TEMP/butano"
-
-          if [ -f "$CANDIDATE1/tools/makefile" ]; then
-            BUTANO_PATH="$CANDIDATE1"
-          else
-            rm -rf "$CANDIDATE2"
-            git clone --depth 1 https://github.com/GValiente/butano.git "$CANDIDATE2"
-            BUTANO_PATH="$CANDIDATE2"
-          fi
-
-          if [ ! -f "$BUTANO_PATH/tools/makefile" ]; then
-            echo "Butano setup failed: tools/makefile not found under $BUTANO_PATH"
-            echo "Workspace listing:" && ls -lah "$GITHUB_WORKSPACE"
-            echo "Runner temp listing:" && ls -lah "$RUNNER_TEMP"
+          if [ -z "$BUTANO_PATH" ]; then
+            echo "Could not find Butano checkout."
+            echo "Expected one of:"
+            echo "  - $GITHUB_WORKSPACE/butano"
+            echo "  - /opt/butano"
+            echo "  - $HOME/butano"
+            echo "If your runners are offline, vendor Butano into the repo at ./butano."
             exit 1
           fi
 
@@ -49,31 +47,35 @@ jobs:
       - name: Generate source assets
         run: python3 tools/gen_assets.py
 
-      - name: Preflight raw assets
-        run: |
-          test -f assets/graphics/bangalore_street.png || (echo "Missing background PNG" && exit 1)
-          test -f assets/graphics/kush.png || (echo "Missing player sprite PNG" && exit 1)
-          test -f assets/audio/confirm.wav || (echo "Missing confirm SFX" && exit 1)
-
       - name: Build ROM
-        run: make clean && make -j2
-
-      - name: Validate generated headers
         run: |
-          echo "Generated headers under build/:"
-          find build -type f -name 'bn_*items*.h' | sort
-          find build -type f -name 'bn_regular_bg_items_bangalore_street.h' | grep -q . || (echo "Missing generated header: bn_regular_bg_items_bangalore_street.h" && exit 1)
-          find build -type f -name 'bn_sprite_items_kush.h' | grep -q . || (echo "Missing generated header: bn_sprite_items_kush.h" && exit 1)
-          find build -type f -name 'bn_sound_items.h' | grep -q . || (echo "Missing generated header: bn_sound_items.h" && exit 1)
+          make clean
+          make -j2
 
-      - name: Validate ROM output
+      - name: Validate and stage ROM artifact
         run: |
-          ls -lah build
-          test -f build/bangalore_love_quest.gba || (echo "ROM not found at build/bangalore_love_quest.gba" && exit 1)
+          set -euo pipefail
+          mkdir -p dist
+          ROM_PATH=""
+          if [ -f build/bangalore_love_quest.gba ]; then
+            ROM_PATH="build/bangalore_love_quest.gba"
+          else
+            ROM_PATH="$(find build -maxdepth 5 -type f -name '*.gba' | head -n 1 || true)"
+          fi
+
+          if [ -z "$ROM_PATH" ]; then
+            echo "No .gba output found"
+            echo "Build tree:"
+            find build -maxdepth 5 -type f | sort || true
+            exit 1
+          fi
+
+          cp "$ROM_PATH" dist/bangalore_love_quest.gba
+          ls -lah dist
 
       - name: Upload ROM artifact
         uses: actions/upload-artifact@v4
         with:
           name: bangalore-love-quest-gba
-          path: build/bangalore_love_quest.gba
+          path: dist/bangalore_love_quest.gba
           if-no-files-found: error

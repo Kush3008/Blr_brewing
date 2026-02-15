@@ -169,7 +169,7 @@ private:
         _collectibles[3].sprite.emplace(bn::sprite_items::roses.create_sprite(-70, 62));
         _collectibles[4].sprite.emplace(bn::sprite_items::sunflowers.create_sprite(-10, -8));
 
-        for(int i = 0; i < 5; ++i)
+        for(int i = 0; i < constants::REQUIRED_ITEM_COUNT; ++i)
         {
             _collectibles[i].base_y = _collectibles[i].sprite->y();
             _collectibles[i].sprite->set_z_order(1);
@@ -230,7 +230,7 @@ private:
         ++_bob_counter;
         const bn::fixed bob = (_bob_counter / 20) % 2 == 0 ? 0 : -1;
 
-        for(int i = 0; i < 5; ++i)
+        for(int i = 0; i < constants::REQUIRED_ITEM_COUNT; ++i)
         {
             if(! _collectibles[i].collected)
             {
@@ -262,7 +262,7 @@ private:
             }
         }
 
-        _all_collected = done == 5;
+        _all_collected = done == constants::REQUIRED_ITEM_COUNT;
     }
 
     void _refresh_ui_text()
@@ -277,7 +277,8 @@ private:
 
         bn::string<24> label("Items ");
         label += bn::to_string<2>(done);
-        label += "/5";
+        label += "/";
+        label += bn::to_string<2>(constants::REQUIRED_ITEM_COUNT);
         _text_generator.generate(44, -72, label, _ui_text);
 
         if(_all_collected)
@@ -296,8 +297,8 @@ private:
     bn::sprite_text_generator& _text_generator;
     bn::optional<bn::regular_bg_ptr> _bg;
     bn::optional<bn::sprite_ptr> _player;
-    bn::array<Collectible, 5> _collectibles;
-    bn::array<bn::optional<bn::sprite_ptr>, 5> _ui_icons;
+    bn::array<Collectible, constants::REQUIRED_ITEM_COUNT> _collectibles;
+    bn::array<bn::optional<bn::sprite_ptr>, constants::REQUIRED_ITEM_COUNT> _ui_icons;
     bn::optional<bn::sprite_ptr> _meeting_marker;
     bn::vector<bn::sprite_ptr, 48> _ui_text;
     int _walk_frame = 0;

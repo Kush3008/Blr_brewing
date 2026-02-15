@@ -10,9 +10,9 @@ namespace blq::constants
     constexpr int WORLD_HEIGHT = 256;
 
     constexpr bn::fixed PLAYER_SPEED = 1;
-    constexpr int REQUIRED_ITEM_COUNT = 1;
+    constexpr int REQUIRED_ITEM_COUNT = 5;
 
-    constexpr bn::fixed_point MEETING_SPOT(104, 96);
+    constexpr bn::fixed_point MEETING_SPOT(96, 58);
 }
 
 #endif
