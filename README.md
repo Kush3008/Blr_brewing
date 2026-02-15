@@ -60,6 +60,7 @@ _Optional helper target:_
 ```bash
 make setup-butano BUTANO_PATH=~/butano
 # Re-running refreshes existing checkout
+# Offline runners can reuse /opt/butano if present
 ```
 
 2. Export the path:
@@ -100,7 +101,7 @@ build/bangalore_love_quest.gba
 
 ## CI artifact (GitHub Actions)
 
-The workflow `.github/workflows/build-gba.yml` builds the ROM in a devkitARM container and uploads a downloadable artifact named **`bangalore-love-quest-gba`**.
+The workflow `.github/workflows/build-gba.yml` builds the ROM in a devkitARM container and uploads a downloadable artifact named **`bangalore-love-quest-gba`**. It resolves Butano from local paths first (`./butano`, `/opt/butano`, `$HOME/butano`) so offline runners can still build when Butano is pre-provisioned.
 
 If you trigger it manually (`Actions -> Build GBA ROM -> Run workflow`), download `bangalore_love_quest.gba` from the workflow run artifacts.
 

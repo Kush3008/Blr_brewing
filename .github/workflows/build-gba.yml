@@ -24,23 +24,39 @@ jobs:
       - name: Install host tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git python3 make findutils
+          apt-get install -y --no-install-recommends ca-certificates python3 make findutils
 
-      - name: Setup Butano
+      - name: Resolve Butano path (no network)
         run: |
           set -euo pipefail
-          BUTANO_PATH="$GITHUB_WORKSPACE/butano"
-          rm -rf "$BUTANO_PATH"
-          git clone --depth 1 https://github.com/GValiente/butano.git "$BUTANO_PATH"
-          test -f "$BUTANO_PATH/tools/makefile"
+          BUTANO_PATH=""
+          for candidate in "$GITHUB_WORKSPACE/butano" /opt/butano "$HOME/butano"; do
+            if [ -f "$candidate/tools/makefile" ]; then
+              BUTANO_PATH="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$BUTANO_PATH" ]; then
+            echo "Could not find Butano checkout."
+            echo "Expected one of:"
+            echo "  - $GITHUB_WORKSPACE/butano"
+            echo "  - /opt/butano"
+            echo "  - $HOME/butano"
+            echo "If your runners are offline, vendor Butano into the repo at ./butano."
+            exit 1
+          fi
+
+          echo "Using BUTANO_PATH=$BUTANO_PATH"
+          echo "BUTANO_PATH=$BUTANO_PATH" >> "$GITHUB_ENV"
 
       - name: Generate source assets
         run: python3 tools/gen_assets.py
 
       - name: Build ROM
         run: |
-          BUTANO_PATH="$GITHUB_WORKSPACE/butano" make clean
-          BUTANO_PATH="$GITHUB_WORKSPACE/butano" make -j2
+          make clean
+          make -j2
 
       - name: Validate and stage ROM artifact
         run: |

@@ -30,6 +30,10 @@ setup-butano:
 		echo "Butano already exists at $(BUTANO_PATH); refreshing"; \
 		git -C "$(BUTANO_PATH)" fetch --depth 1 origin; \
 		git -C "$(BUTANO_PATH)" reset --hard FETCH_HEAD; \
+	elif [ -f /opt/butano/tools/makefile ]; then \
+		echo "Using offline Butano from /opt/butano"; \
+		rm -rf "$(BUTANO_PATH)"; \
+		cp -a /opt/butano "$(BUTANO_PATH)"; \
 	else \
 		git clone --depth 1 https://github.com/GValiente/butano.git "$(BUTANO_PATH)"; \
 	fi
