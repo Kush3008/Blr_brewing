@@ -59,6 +59,7 @@ _Optional helper target:_
 
 ```bash
 make setup-butano BUTANO_PATH=~/butano
+# Re-running refreshes existing checkout
 ```
 
 2. Export the path:

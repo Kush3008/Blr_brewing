@@ -26,7 +26,13 @@ setup-butano:
 		echo "Set BUTANO_PATH before running setup-butano (for example: BUTANO_PATH=$(CURDIR)/.butano)"; \
 		exit 1; \
 	fi
-	git clone --depth 1 https://github.com/GValiente/butano.git $(BUTANO_PATH)
+	@if [ -d "$(BUTANO_PATH)/.git" ]; then \
+		echo "Butano already exists at $(BUTANO_PATH); refreshing"; \
+		git -C "$(BUTANO_PATH)" fetch --depth 1 origin; \
+		git -C "$(BUTANO_PATH)" reset --hard FETCH_HEAD; \
+	else \
+		git clone --depth 1 https://github.com/GValiente/butano.git "$(BUTANO_PATH)"; \
+	fi
 
 ifneq ($(filter assets setup-butano,$(MAKECMDGOALS)),)
 # Skip Butano include for utility targets.
