@@ -55,6 +55,12 @@ dkp-pacman -S gba-dev
 git clone https://github.com/GValiente/butano.git ~/butano
 ```
 
+_Optional helper target:_
+
+```bash
+make setup-butano BUTANO_PATH=~/butano
+```
+
 2. Export the path:
 
 ```bash
@@ -88,6 +94,14 @@ Output ROM:
 ```text
 build/bangalore_love_quest.gba
 ```
+
+---
+
+## CI artifact (GitHub Actions)
+
+The workflow `.github/workflows/build-gba.yml` builds the ROM in a devkitARM container and uploads a downloadable artifact named **`bangalore-love-quest-gba`**.
+
+If you trigger it manually (`Actions -> Build GBA ROM -> Run workflow`), download `bangalore_love_quest.gba` from the workflow run artifacts.
 
 ---
 
