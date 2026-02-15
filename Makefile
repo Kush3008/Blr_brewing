@@ -17,20 +17,13 @@ $(ASSET_STAMP): tools/gen_assets.py
 
 assets: $(ASSET_STAMP)
 
+
 ifndef BUTANO_PATH
-$(error BUTANO_PATH is not set. Point it to the Butano repo root)
+$(error BUTANO_PATH is not set. Point it to the Butano repo root containing tools/makefile)
 endif
 
-BUTANO_MAKEFILE :=
-ifneq ($(wildcard $(BUTANO_PATH)/tools/makefile),)
-BUTANO_MAKEFILE := $(BUTANO_PATH)/tools/makefile
-endif
-ifneq ($(wildcard $(BUTANO_PATH)/butano/tools/makefile),)
-BUTANO_MAKEFILE := $(BUTANO_PATH)/butano/tools/makefile
+ifeq ($(wildcard $(BUTANO_PATH)/tools/makefile),)
+$(error BUTANO_PATH is invalid: $(BUTANO_PATH). Expected $(BUTANO_PATH)/tools/makefile)
 endif
 
-ifeq ($(BUTANO_MAKEFILE),)
-$(error BUTANO_PATH is invalid: $(BUTANO_PATH). Expected either $(BUTANO_PATH)/tools/makefile or $(BUTANO_PATH)/butano/tools/makefile)
-endif
-
-include $(BUTANO_MAKEFILE)
+include $(BUTANO_PATH)/tools/makefile

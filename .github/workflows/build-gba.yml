@@ -28,7 +28,7 @@ jobs:
           CANDIDATE1="$GITHUB_WORKSPACE/butano"
           CANDIDATE2="$RUNNER_TEMP/butano"
 
-          if [ -d "$CANDIDATE1" ]; then
+          if [ -f "$CANDIDATE1/tools/makefile" ]; then
             BUTANO_PATH="$CANDIDATE1"
           else
             rm -rf "$CANDIDATE2"
@@ -36,25 +36,15 @@ jobs:
             BUTANO_PATH="$CANDIDATE2"
           fi
 
-          if [ -f "$BUTANO_PATH/tools/makefile" ]; then
-            echo "Using Butano makefile: $BUTANO_PATH/tools/makefile"
-          elif [ -f "$BUTANO_PATH/butano/tools/makefile" ]; then
-            echo "Using Butano makefile: $BUTANO_PATH/butano/tools/makefile"
-          else
-            echo "Butano setup failed: makefile not found under $BUTANO_PATH"
-            echo "Expected one of:"
-            echo "  - $BUTANO_PATH/tools/makefile"
-            echo "  - $BUTANO_PATH/butano/tools/makefile"
-            echo "Top-level entries in BUTANO_PATH:" && ls -lah "$BUTANO_PATH"
+          if [ ! -f "$BUTANO_PATH/tools/makefile" ]; then
+            echo "Butano setup failed: tools/makefile not found under $BUTANO_PATH"
+            echo "Workspace listing:" && ls -lah "$GITHUB_WORKSPACE"
+            echo "Runner temp listing:" && ls -lah "$RUNNER_TEMP"
             exit 1
           fi
 
+          echo "Using BUTANO_PATH=$BUTANO_PATH"
           echo "BUTANO_PATH=$BUTANO_PATH" >> "$GITHUB_ENV"
-
-      - name: Inspect Butano checkout
-        run: |
-          echo "BUTANO_PATH=$BUTANO_PATH"
-          find "$BUTANO_PATH" -maxdepth 2 -type d | sort | head -n 60
 
       - name: Generate source assets
         run: python3 tools/gen_assets.py
