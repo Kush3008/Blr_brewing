@@ -55,6 +55,12 @@ dkp-pacman -S gba-dev
 git clone https://github.com/GValiente/butano.git ~/butano
 ```
 
+_Optional helper target:_
+
+```bash
+make setup-butano BUTANO_PATH=~/butano
+```
+
 2. Export the path:
 
 ```bash

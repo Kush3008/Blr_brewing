@@ -17,9 +17,22 @@ $(ASSET_STAMP): tools/gen_assets.py
 
 assets: $(ASSET_STAMP)
 
+DEFAULT_BUTANO_PATH := $(firstword $(wildcard $(CURDIR)/.butano $(HOME)/butano /opt/butano))
+BUTANO_PATH ?= $(DEFAULT_BUTANO_PATH)
 
-ifndef BUTANO_PATH
-$(error BUTANO_PATH is not set. Point it to the Butano repo root containing tools/makefile)
+.PHONY: setup-butano
+setup-butano:
+	@if [ -z "$(BUTANO_PATH)" ]; then \
+		echo "Set BUTANO_PATH before running setup-butano (for example: BUTANO_PATH=$(CURDIR)/.butano)"; \
+		exit 1; \
+	fi
+	git clone --depth 1 https://github.com/GValiente/butano.git $(BUTANO_PATH)
+
+ifneq ($(filter assets setup-butano,$(MAKECMDGOALS)),)
+# Skip Butano include for utility targets.
+else
+ifeq ($(strip $(BUTANO_PATH)),)
+$(error BUTANO_PATH is not set. Set it explicitly or run `make setup-butano BUTANO_PATH=/path/to/butano`)
 endif
 
 ifeq ($(wildcard $(BUTANO_PATH)/tools/makefile),)
@@ -27,3 +40,4 @@ $(error BUTANO_PATH is invalid: $(BUTANO_PATH). Expected $(BUTANO_PATH)/tools/ma
 endif
 
 include $(BUTANO_PATH)/tools/makefile
+endif
