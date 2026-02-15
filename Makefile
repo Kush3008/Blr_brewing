@@ -31,16 +31,22 @@ endif
 ifneq ($(wildcard $(BUTANO_PATH)/tools/Makefile),)
 BUTANO_MAKEFILE := $(BUTANO_PATH)/tools/Makefile
 endif
+ifneq ($(wildcard $(BUTANO_PATH)/tools/GNUmakefile),)
+BUTANO_MAKEFILE := $(BUTANO_PATH)/tools/GNUmakefile
+endif
 ifneq ($(wildcard $(BUTANO_PATH)/butano/tools/makefile),)
 BUTANO_MAKEFILE := $(BUTANO_PATH)/butano/tools/makefile
 endif
 ifneq ($(wildcard $(BUTANO_PATH)/butano/tools/Makefile),)
 BUTANO_MAKEFILE := $(BUTANO_PATH)/butano/tools/Makefile
 endif
+ifneq ($(wildcard $(BUTANO_PATH)/butano/tools/GNUmakefile),)
+BUTANO_MAKEFILE := $(BUTANO_PATH)/butano/tools/GNUmakefile
+endif
 endif
 
 ifeq ($(BUTANO_MAKEFILE),)
-$(error Butano makefile not found. Set BUTANO_MAKEFILE_PATH directly or set BUTANO_PATH to a repo containing tools/makefile)
+$(error Butano makefile not found. Set BUTANO_MAKEFILE_PATH directly or set BUTANO_PATH to a repo containing tools/makefile, tools/Makefile, or tools/GNUmakefile)
 endif
 
 include $(BUTANO_MAKEFILE)

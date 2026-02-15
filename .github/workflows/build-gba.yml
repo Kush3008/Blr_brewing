@@ -40,10 +40,10 @@ jobs:
           while IFS= read -r f; do
             BUTANO_MAKEFILE_PATH="$f"
             break
-          done < <(find "$BUTANO_PATH" -type f \( -path '*/tools/makefile' -o -path '*/tools/Makefile' \) | sort)
+          done < <(find "$BUTANO_PATH" \( -path '*/tools/makefile' -o -path '*/tools/Makefile' -o -path '*/tools/GNUmakefile' \) | sort)
 
           if [ -z "$BUTANO_MAKEFILE_PATH" ]; then
-            echo "Butano setup failed: could not find a tools/makefile in $BUTANO_PATH"
+            echo "Butano setup failed: could not find a tools makefile (including symlink targets) in $BUTANO_PATH"
             echo "Top-level entries in BUTANO_PATH:" && ls -lah "$BUTANO_PATH"
             echo "Sample tree (depth 3):" && find "$BUTANO_PATH" -maxdepth 3 -type d | sort | head -n 200
             exit 1
