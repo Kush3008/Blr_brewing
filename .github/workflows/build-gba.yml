@@ -15,6 +15,12 @@ jobs:
       - name: Checkout game repo
         uses: actions/checkout@v4
 
+      - name: Checkout Butano
+        uses: actions/checkout@v4
+        with:
+          repository: GValiente/butano
+          path: butano
+
       - name: Install host tools
         run: |
           apt-get update
