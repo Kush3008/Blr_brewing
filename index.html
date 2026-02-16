@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Bangalore Street Collectathon</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:none;-webkit-tap-highlight-color:transparent}
+#game{width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<script>
+'use strict';
+
+// ============================================================
+// AUDIO MANAGER - Procedural 8-bit sounds
+// ============================================================
+class AudioManager {
+    constructor() {
+        this.ctx = null;
+        this.bgmGain = null;
+        this.sfxGain = null;
+        this.bgmPlaying = false;
+    }
+    init() {
+        if (this.ctx) return;
+        try {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            this.bgmGain = this.ctx.createGain();
+            this.bgmGain.gain.value = 0.1;
+            this.bgmGain.connect(this.ctx.destination);
+            this.sfxGain = this.ctx.createGain();
+            this.sfxGain.gain.value = 0.13;
+            this.sfxGain.connect(this.ctx.destination);
+        } catch(e) { console.warn('Audio unavailable'); }
+    }
+    resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+    _n(freq, type, start, dur, vol, dest) {
+        if (!this.ctx) return;
+        const o = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        o.type = type; o.frequency.value = freq;
+        g.gain.setValueAtTime(vol, start);
+        g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+        o.connect(g); g.connect(dest || this.sfxGain);
+        o.start(start); o.stop(start + dur + 0.01);
+    }
+    playBeep() { if(!this.ctx)return; this._n(700+Math.random()*200,'square',this.ctx.currentTime,0.03,0.05); }
+    playSelect() { if(!this.ctx)return; const t=this.ctx.currentTime; this._n(440,'square',t,0.06,0.08); }
+    playConfirm() {
+        if(!this.ctx)return; const t=this.ctx.currentTime;
+        this._n(523,'square',t,0.08,0.1); this._n(659,'square',t+0.08,0.08,0.1); this._n(784,'square',t+0.16,0.12,0.1);
+    }
+    playStep() { if(!this.ctx)return; this._n(100+Math.random()*60,'triangle',this.ctx.currentTime,0.04,0.04); }
+    playItemGet() {
+        if(!this.ctx)return; const t=this.ctx.currentTime;
+        [523,659,784,1047].forEach((f,i)=>{
+            this._n(f,'square',t+i*0.1,0.15,0.1);
+            this._n(f*0.5,'triangle',t+i*0.1,0.15,0.06);
+        });
+    }
+    playHeart() {
+        if(!this.ctx)return; const t=this.ctx.currentTime;
+        this._n(659,'sine',t,0.3,0.08); this._n(784,'sine',t+0.15,0.3,0.08); this._n(1047,'sine',t+0.3,0.5,0.06);
+    }
+    playBGM(type) {
+        if(!this.ctx)return; this.stopBGM(); this.bgmPlaying=true;
+        const m={
+            explore:[[392,.25],[440,.25],[523,.25],[440,.25],[392,.25],[349,.25],[330,.25],[349,.25],[392,.25],[523,.25],[587,.25],[523,.25],[440,.25],[392,.25],[349,.5],[0,.25]],
+            ending:[[523,.4],[587,.4],[659,.4],[523,.4],[587,.4],[784,.4],[659,.8],[523,.4],[440,.4],[392,.4],[440,.4],[523,.4],[392,.4],[523,.8]],
+            title:[[523,.3],[0,.1],[659,.3],[0,.1],[784,.3],[0,.1],[659,.3],[0,.1],[523,.6],[0,.2],[440,.3],[0,.1],[523,.3],[0,.1],[659,.3],[0,.1],[523,.3],[0,.1],[440,.6],[0,.3]]
+        };
+        const mel=m[type]||m.explore;
+        const loop=()=>{
+            if(!this.bgmPlaying)return;
+            let t=this.ctx.currentTime+0.05;
+            mel.forEach(([f,d])=>{
+                if(f>0){this._n(f,'square',t,d*0.7,0.04,this.bgmGain);this._n(f*0.5,'triangle',t,d*0.8,0.03,this.bgmGain);}
+                t+=d;
+            });
+            const dur=mel.reduce((s,[,d])=>s+d,0);
+            this._bgmT=setTimeout(loop,dur*1000);
+        };
+        loop();
+    }
+    stopBGM() { this.bgmPlaying=false; if(this._bgmT)clearTimeout(this._bgmT); }
+}
+const AUDIO = new AudioManager();
+
+// ============================================================
+// GAME STATE & LOCATION DATA
+// ============================================================
+const STATE = { selectedCharacter:null, giftCharacter:null, collectedItems:[], currentLocation:0 };
+
+const LOCATIONS = [
+    { key:'momos_aunty', name:'Momos Aunty', npcName:'Momos Aunty', npcX:78, npcY:108,
+      startX:160, startY:138, exitX:232, exitDir:'right', wMinY:95, wMaxY:150,
+      dialog:["Welcome beta! Fresh momos,\njust steamed for you!","Take this full plate -\nextra spicy with love!"],
+      item:'momos', itemName:'Plate of Momos' },
+    { key:'blr_brewing', name:'BLR Brewing Co', npcName:'Bartender', npcX:140, npcY:116,
+      startX:30, startY:138, exitX:232, exitDir:'right', wMinY:96, wMaxY:150,
+      dialog:["Welcome to BLR Brewing!\nCraft beer capital of Blr!","One chilled craft beer,\ncoming right up. Cheers!"],
+      item:'beer', itemName:'Craft Beer' },
+    { key:'asha_tiffin', name:'Asha Tiffins', npcName:'Asha Aunty', npcX:115, npcY:108,
+      startX:40, startY:138, exitX:232, exitDir:'right', wMinY:93, wMaxY:150,
+      dialog:["Vanakkam! Sit sit, best\ntiffin in all Bangalore!","Chilli paneer and noodles,\nfresh off the stove!"],
+      item:'chilli_paneer', itemName:'Chilli Paneer & Noodles' },
+    { key:'schezuan_dragon', name:'Schezuan Dragon', npcName:'Chef Wang', npcX:85, npcY:108,
+      startX:180, startY:138, exitX:8, exitDir:'left', wMinY:93, wMaxY:150,
+      dialog:["Welcome to Schezuan Dragon!\nBest Chinese in the city!","Our manchow soup is famous.\nHere, on the house!"],
+      item:'manchow_soup', itemName:'Manchow Soup' },
+    { key:'tea_stall', name:'Tea Stall', npcName:'Chai Bhaiya', npcX:95, npcY:106,
+      startX:180, startY:138, exitX:8, exitDir:'left', wMinY:93, wMaxY:150,
+      dialog:["Chai chai garam chai!\nBest cutting chai here!","Nothing like hot chai on\na Bangalore evening!"],
+      item:'tea', itemName:'Hot Chai' },
+    { key:'flower_shop', name:'Flower Shop', npcName:'Florist', npcX:85, npcY:106,
+      startX:160, startY:138, exitX:232, exitDir:'right', wMinY:93, wMaxY:150,
+      dialog:["Looking for flowers?\nWe have the best bouquets!","Roses, sunflowers, lilies...\nPerfect for someone special!"],
+      item:'flowers', itemName:'Flower Bouquet' }
+];
+
+// ============================================================
+// HELPER: Typewriter text with sound
+// ============================================================
+function typewrite(scene, textObj, str, cb, spd) {
+    spd=spd||28; let i=0; textObj.setText('');
+    return scene.time.addEvent({ delay:spd, repeat:str.length-1, callback:()=>{
+        i++; textObj.setText(str.substring(0,i));
+        if(i%2===0)AUDIO.playBeep();
+        if(i>=str.length && cb) cb();
+    }});
+}
+
+// ============================================================
+// BOOT SCENE
+// ============================================================
+class BootScene extends Phaser.Scene {
+    constructor(){super('Boot');}
+    preload(){
+        const cx=120,cy=80;
+        this.add.rectangle(cx,cy-8,160,8,0x222233).setOrigin(0.5);
+        const bar=this.add.rectangle(cx-78,cy-8,0,6,0xff6b9d).setOrigin(0,0.5);
+        const txt=this.add.text(cx,cy+8,'Loading...',{fontFamily:'monospace',fontSize:'6px',color:'#888'}).setOrigin(0.5);
+        this.load.on('progress',v=>{bar.width=156*v;});
+
+        ['kush','manna'].forEach(c=>['front','back','left','right'].forEach(d=>
+            this.load.image(c+'_'+d,'assets/characters/'+c+'_'+d+'.png')));
+        ['momos','beer','chilli_paneer','manchow_soup','tea','flowers'].forEach(i=>{
+            this.load.image(i,'assets/items/'+i+'.png');
+            this.load.image(i+'_large','assets/items/'+i+'_large.png');
+        });
+        LOCATIONS.forEach(l=>this.load.image('loc_'+l.key,'assets/locations/'+l.key+'.png'));
+        this.load.image('loc_lake','assets/locations/lake_picnic.png');
+        this.load.image('textbox','assets/ui/gba_textbox_frame_240x48_solid.png');
+        this.load.image('popup','assets/ui/gba_item_get_popup_80x32_frame_solid.png');
+        this.load.image('heart_y','assets/ui/heart_yellow_full.png');
+        this.load.image('heart_b','assets/ui/heart_blue_full.png');
+        this.load.image('heart_p','assets/ui/heart_purple_full.png');
+        this.load.image('logo','assets/logo/logo.png');
+    }
+    create(){ this.time.delayedCall(400,()=>this.scene.start('Title')); }
+}
+
+// ============================================================
+// TITLE SCENE
+// ============================================================
+class TitleScene extends Phaser.Scene {
+    constructor(){super('Title');}
+    create(){
+        AUDIO.init(); AUDIO.resume();
+        this.cameras.main.setBackgroundColor('#080810');
+        this.cameras.main.fadeIn(500);
+
+        // Stars
+        for(let i=0;i<35;i++){
+            const s=this.add.rectangle(Phaser.Math.Between(0,240),Phaser.Math.Between(0,160),1,1,0xffffff)
+                .setAlpha(Phaser.Math.FloatBetween(0.05,0.3));
+            this.tweens.add({targets:s,alpha:0,duration:Phaser.Math.Between(600,2000),yoyo:true,repeat:-1,delay:Phaser.Math.Between(0,1500)});
+        }
+
+        // Logo
+        const logo=this.add.image(120,50,'logo').setScale(0.82);
+        this.tweens.add({targets:logo,y:53,duration:2000,ease:'Sine.easeInOut',yoyo:true,repeat:-1});
+
+        // Decorative hearts
+        const hc=[0xffdd44,0x44ddff,0xdd44ff];
+        [-18,0,18].forEach((ox,i)=>{
+            const h=this.add.rectangle(120+ox,82,5,5,hc[i]).setScale(0);
+            this.tweens.add({targets:h,scaleX:1,scaleY:1,duration:400,delay:800+i*200,ease:'Back.easeOut'});
+            this.tweens.add({targets:h,y:80,duration:1200,yoyo:true,repeat:-1,delay:i*250,ease:'Sine.easeInOut'});
+        });
+
+        // Tap to start
+        const st=this.add.text(120,120,'TAP TO START',{fontFamily:'monospace',fontSize:'8px',color:'#fff'}).setOrigin(0.5).setAlpha(0);
+        this.tweens.add({targets:st,alpha:1,duration:600,delay:1200});
+        this.tweens.add({targets:st,alpha:0.3,duration:700,yoyo:true,repeat:-1,delay:1800});
+
+        this.add.text(120,148,'Arrows + Space  |  Tap to play',{fontFamily:'monospace',fontSize:'4px',color:'#444'}).setOrigin(0.5);
+
+        let go=false;
+        const start=()=>{ if(go)return; go=true; AUDIO.init(); AUDIO.resume(); AUDIO.playConfirm();
+            this.cameras.main.fadeOut(400); this.time.delayedCall(400,()=>this.scene.start('Select')); };
+        this.input.on('pointerdown',start);
+        this.input.keyboard.on('keydown-SPACE',start);
+        this.input.keyboard.on('keydown-ENTER',start);
+        AUDIO.playBGM('title');
+    }
+}
+
+// ============================================================
+// SELECT SCENE
+// ============================================================
+class SelectScene extends Phaser.Scene {
+    constructor(){super('Select');}
+    create(){
+        this.cameras.main.setBackgroundColor('#141428');
+        this.cameras.main.fadeIn(400);
+
+        this.add.text(120,20,'Choose your character',{fontFamily:'monospace',fontSize:'8px',color:'#fff'}).setOrigin(0.5);
+
+        const lx=70,rx=170,cy=72;
+        const k=this.add.image(lx,cy,'kush_front').setScale(2);
+        const m=this.add.image(rx,cy,'manna_front').setScale(2);
+        const kn=this.add.text(lx,cy+48,'KUSH',{fontFamily:'monospace',fontSize:'7px',color:'#6eb5ff'}).setOrigin(0.5);
+        const mn=this.add.text(rx,cy+48,'MANNA',{fontFamily:'monospace',fontSize:'7px',color:'#ffb5d5'}).setOrigin(0.5);
+
+        const arrow=this.add.text(lx,cy-43,'\u25BC',{fontFamily:'monospace',fontSize:'8px',color:'#ffdd44'}).setOrigin(0.5);
+        this.tweens.add({targets:arrow,y:cy-38,duration:400,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
+
+        let sel=0, done=false;
+        const upd=()=>{ arrow.x=sel===0?lx:rx; k.setAlpha(sel===0?1:0.35); m.setAlpha(sel===1?1:0.35);
+            kn.setAlpha(sel===0?1:0.35); mn.setAlpha(sel===1?1:0.35); };
+        upd();
+
+        this.add.text(120,140,'Tap character twice to confirm',{fontFamily:'monospace',fontSize:'5px',color:'#555'}).setOrigin(0.5);
+
+        const confirm=()=>{
+            if(done)return; done=true; AUDIO.playConfirm();
+            STATE.selectedCharacter=sel===0?'kush':'manna';
+            STATE.giftCharacter=sel===0?'manna':'kush';
+            STATE.collectedItems=[]; STATE.currentLocation=0;
+            this.cameras.main.flash(200,255,255,255);
+            this.cameras.main.fadeOut(400);
+            this.time.delayedCall(500,()=>{AUDIO.stopBGM();this.scene.start('Location');});
+        };
+
+        this.input.keyboard.on('keydown-LEFT',()=>{if(!done){sel=0;upd();AUDIO.playSelect();}});
+        this.input.keyboard.on('keydown-RIGHT',()=>{if(!done){sel=1;upd();AUDIO.playSelect();}});
+        this.input.keyboard.on('keydown-SPACE',confirm);
+        this.input.keyboard.on('keydown-ENTER',confirm);
+        this.input.on('pointerdown',(p)=>{if(done)return;
+            if(p.x<120){if(sel===0)confirm();else{sel=0;upd();AUDIO.playSelect();}}
+            else{if(sel===1)confirm();else{sel=1;upd();AUDIO.playSelect();}}
+        });
+    }
+}
+
+// ============================================================
+// LOCATION SCENE - Actual gameplay with movement & NPC talk
+// ============================================================
+class LocationScene extends Phaser.Scene {
+    constructor(){super('Location');}
+    create(){
+        const L=LOCATIONS[STATE.currentLocation];
+        this.L=L; this.talking=false; this.gotItem=false; this.canLeave=false;
+        this.npcTalked=false; this.stepT=0; this._exit=false;
+
+        this.cameras.main.fadeIn(500);
+        // Background
+        this.add.image(120,80,'loc_'+L.key);
+
+        // NPC marker - floating ! above interaction point
+        this.npcMark=this.add.text(L.npcX,L.npcY-18,'!',{
+            fontFamily:'monospace',fontSize:'9px',color:'#ffdd44',
+            stroke:'#000',strokeThickness:3,fontStyle:'bold'
+        }).setOrigin(0.5).setDepth(8);
+        this.tweens.add({targets:this.npcMark,y:L.npcY-22,duration:500,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
+
+        // Player sprite
+        const pc=STATE.selectedCharacter;
+        this.player=this.add.image(L.startX,L.startY,pc+'_front').setDepth(10);
+        this.targetX=L.startX; this.targetY=L.startY;
+
+        // HUD
+        this.drawHUD();
+
+        // Location name flash
+        const nm=this.add.text(120,14,L.name,{fontFamily:'monospace',fontSize:'7px',color:'#fff',
+            stroke:'#000',strokeThickness:2}).setOrigin(0.5).setDepth(20).setAlpha(0);
+        this.tweens.add({targets:nm,alpha:1,duration:300,hold:1800,yoyo:true});
+
+        // Exit arrow (hidden)
+        this.exitArrow=this.add.text(L.exitDir==='right'?233:7,120,L.exitDir==='right'?'\u25B6':'\u25C0',{
+            fontFamily:'monospace',fontSize:'10px',color:'#44ff88',stroke:'#000',strokeThickness:2
+        }).setOrigin(0.5).setDepth(8).setVisible(false);
+        this.tweens.add({targets:this.exitArrow,alpha:0.4,duration:500,yoyo:true,repeat:-1});
+
+        // Input
+        this.cursors=this.input.keyboard.createCursorKeys();
+        this.spaceKey=this.input.keyboard.addKey('SPACE');
+        this.enterKey=this.input.keyboard.addKey('ENTER');
+
+        this.input.on('pointerdown',(p)=>{
+            if(this.talking){this.advanceDialog();return;}
+            // Tap to move
+            const ty=Phaser.Math.Clamp(p.y,L.wMinY,L.wMaxY);
+            const tx=Phaser.Math.Clamp(p.x,12,228);
+            this.targetX=tx; this.targetY=ty;
+        });
+
+        AUDIO.playBGM('explore');
+    }
+
+    drawHUD(){
+        this.add.rectangle(120,8,240,16,0x000000,0.65).setDepth(15);
+        const n=STATE.collectedItems.length;
+        const sx=120-(n*14)/2+7;
+        STATE.collectedItems.forEach((k,i)=>{
+            this.add.image(sx+i*14,8,k).setDepth(16).setScale(0.35);
+        });
+    }
+
+    update(time,dt){
+        if(this.talking||this._exit)return;
+        const L=this.L, pc=STATE.selectedCharacter;
+        let dx=0,dy=0,spd=1.2;
+
+        // Keyboard
+        if(this.cursors.left.isDown) dx=-spd;
+        else if(this.cursors.right.isDown) dx=spd;
+        if(this.cursors.up.isDown) dy=-spd;
+        else if(this.cursors.down.isDown) dy=spd;
+
+        // Tap target
+        if(dx===0&&dy===0){
+            const tdx=this.targetX-this.player.x, tdy=this.targetY-this.player.y;
+            const d=Math.sqrt(tdx*tdx+tdy*tdy);
+            if(d>2){dx=(tdx/d)*spd;dy=(tdy/d)*spd;}
+        } else {
+            this.targetX=this.player.x; this.targetY=this.player.y;
+        }
+
+        if(dx!==0||dy!==0){
+            this.player.x=Phaser.Math.Clamp(this.player.x+dx,12,228);
+            this.player.y=Phaser.Math.Clamp(this.player.y+dy,L.wMinY,L.wMaxY);
+            // Direction sprite
+            if(Math.abs(dx)>Math.abs(dy)) this.player.setTexture(pc+(dx<0?'_left':'_right'));
+            else this.player.setTexture(pc+(dy<0?'_back':'_front'));
+            // Bob
+            this.player.y+=Math.sin(time/80)*0.4;
+            this.stepT+=dt;
+            if(this.stepT>220){this.stepT=0;AUDIO.playStep();}
+        }
+
+        // Depth sort: player appears in front if lower on screen
+        this.player.setDepth(10 + this.player.y * 0.01);
+
+        // NPC proximity check
+        if(!this.npcTalked){
+            const nd=Phaser.Math.Distance.Between(this.player.x,this.player.y,L.npcX,L.npcY);
+            if(nd<26){
+                if(!this.promptTxt){
+                    this.promptTxt=this.add.text(L.npcX,L.npcY-30,'[SPACE] Talk',{
+                        fontFamily:'monospace',fontSize:'5px',color:'#ffdd44',stroke:'#000',strokeThickness:1
+                    }).setOrigin(0.5).setDepth(20);
+                }
+                if(Phaser.Input.Keyboard.JustDown(this.spaceKey)||Phaser.Input.Keyboard.JustDown(this.enterKey)){
+                    this.beginDialog();
+                }
+                // Auto-trigger on tap near NPC
+                const tdist=Phaser.Math.Distance.Between(this.targetX,this.targetY,L.npcX,L.npcY);
+                if(tdist<26 && nd<20) this.beginDialog();
+            } else if(this.promptTxt){
+                this.promptTxt.destroy();this.promptTxt=null;
+            }
+        }
+
+        // Exit check
+        if(this.canLeave){
+            const ex=L.exitDir==='right'?225:15;
+            if(Math.abs(this.player.x-ex)<15) this.doExit();
+        }
+    }
+
+    beginDialog(){
+        if(this.talking||this.npcTalked)return;
+        this.npcTalked=true; this.talking=true;
+        if(this.promptTxt){this.promptTxt.destroy();this.promptTxt=null;}
+        this.npcMark.setVisible(false);
+        // Face NPC
+        const pc=STATE.selectedCharacter,L=this.L;
+        this.player.setTexture(pc+(L.npcX<this.player.x?'_left':'_right'));
+        this.dlgIdx=0; this.dlgTexts=L.dialog;
+        this.openDlg();
+    }
+
+    openDlg(){
+        const L=this.L;
+        this.dlgBg=this.add.rectangle(120,139,236,42,0x0c0c20,0.92).setDepth(25).setStrokeStyle(1,0x4466aa);
+        this.dlgNm=this.add.text(8,120,L.npcName,{fontFamily:'monospace',fontSize:'6px',color:'#ffdd44',stroke:'#000',strokeThickness:1}).setDepth(26);
+        this.dlgTx=this.add.text(10,128,'',{fontFamily:'monospace',fontSize:'7px',color:'#fff',wordWrap:{width:205},lineSpacing:2}).setDepth(26);
+        this.dlgAr=this.add.text(228,154,'\u25BC',{fontFamily:'monospace',fontSize:'5px',color:'#fff'}).setOrigin(0.5).setDepth(26).setAlpha(0);
+        this.tweens.add({targets:this.dlgAr,alpha:0.7,duration:400,yoyo:true,repeat:-1});
+        this.twDone=false;
+        this.showDlgLine();
+    }
+
+    showDlgLine(){
+        this.twDone=false; this.dlgAr.setAlpha(0);
+        typewrite(this,this.dlgTx,this.dlgTexts[this.dlgIdx],()=>{this.twDone=true;this.dlgAr.setAlpha(0.7);},28);
+    }
+
+    advanceDialog(){
+        if(!this.talking)return;
+        if(!this.twDone){this.dlgTx.setText(this.dlgTexts[this.dlgIdx]);this.twDone=true;this.dlgAr.setAlpha(0.7);return;}
+        AUDIO.playSelect();
+        this.dlgIdx++;
+        if(this.dlgIdx>=this.dlgTexts.length){this.closeDlg();this.showItemPopup();}
+        else this.showDlgLine();
+    }
+
+    closeDlg(){
+        [this.dlgBg,this.dlgNm,this.dlgTx,this.dlgAr].forEach(o=>{if(o)o.destroy();});
+        this.talking=false;
+    }
+
+    showItemPopup(){
+        this.talking=true; // block input
+        const L=this.L;
+        AUDIO.playItemGet();
+        this.cameras.main.shake(200,0.004);
+
+        const ov=this.add.rectangle(120,80,240,160,0x000000,0.45).setDepth(28);
+        const bg=this.add.rectangle(120,68,82,52,0x0c0c22,0.95).setDepth(29).setStrokeStyle(2,0x5577cc).setScale(0);
+        const img=this.add.image(120,62,L.item+'_large').setDepth(30).setScale(0);
+        const txt=this.add.text(120,98,'Got '+L.itemName+'!',{fontFamily:'monospace',fontSize:'7px',color:'#ffdd44',stroke:'#000',strokeThickness:2}).setOrigin(0.5).setDepth(30).setAlpha(0);
+
+        this.tweens.add({targets:bg,scaleX:1,scaleY:1,duration:300,ease:'Back.easeOut'});
+        this.tweens.add({targets:img,scaleX:1.5,scaleY:1.5,duration:400,ease:'Back.easeOut',delay:100});
+        this.tweens.add({targets:txt,alpha:1,duration:300,delay:300});
+
+        // Sparkles
+        for(let i=0;i<10;i++){
+            const a=(i/10)*Math.PI*2;
+            const sp=this.add.rectangle(120,62,2,2,0xffdd44).setDepth(31).setAlpha(0);
+            this.tweens.add({targets:sp,x:120+Math.cos(a)*28,y:62+Math.sin(a)*22,alpha:{from:1,to:0},
+                scaleX:{from:1.5,to:0},scaleY:{from:1.5,to:0},duration:500,delay:250+i*40,ease:'Cubic.easeOut'});
+        }
+
+        STATE.collectedItems.push(L.item);
+        // Update HUD icon
+        const n=STATE.collectedItems.length;
+        const ix=120-(n*14)/2+7+(n-1)*14;
+        const ni=this.add.image(ix,8,L.item).setDepth(16).setScale(0);
+        this.tweens.add({targets:ni,scaleX:0.35,scaleY:0.35,duration:300,ease:'Back.easeOut',delay:500});
+
+        // Dismiss on tap/key or after 2.5s
+        const dismiss=()=>{
+            this.input.off('pointerdown',dismiss);
+            this.input.keyboard.off('keydown-SPACE',dismiss);
+            this.tweens.add({targets:[ov,bg,img,txt],alpha:0,duration:300,onComplete:()=>{
+                ov.destroy();bg.destroy();img.destroy();txt.destroy();
+                this.gotItem=true;this.talking=false;this.enableExit();
+            }});
+        };
+        this.time.delayedCall(1500,()=>{
+            this.input.once('pointerdown',dismiss);
+            this.input.keyboard.once('keydown-SPACE',dismiss);
+            this.time.delayedCall(1500,dismiss); // auto-dismiss after 3s total
+        });
+    }
+
+    enableExit(){
+        this.canLeave=true;
+        this.exitArrow.setVisible(true);
+        this.tweens.add({targets:this.exitArrow,alpha:1,duration:400});
+        const L=this.L;
+        const hint=this.add.text(120,L.wMinY-6,
+            (L.exitDir==='right'?'Walk right \u25B6':'\u25C0 Walk left')+' to continue',
+            {fontFamily:'monospace',fontSize:'5px',color:'#44ff88',stroke:'#000',strokeThickness:1}
+        ).setOrigin(0.5).setDepth(20);
+        this.tweens.add({targets:hint,alpha:0,duration:800,delay:3000});
+        // Auto-set target toward exit for mobile
+        if(L.exitDir==='right') this.targetX=230;
+        else this.targetX=10;
+    }
+
+    doExit(){
+        if(this._exit)return;this._exit=true;
+        AUDIO.stopBGM();
+        this.cameras.main.fadeOut(500);
+        this.time.delayedCall(500,()=>{
+            STATE.currentLocation++;
+            if(STATE.currentLocation>=LOCATIONS.length)this.scene.start('Ending');
+            else this.scene.start('Location');
+        });
+    }
+}
+
+// ============================================================
+// ENDING SCENE - Gift giving + hearts + credits
+// ============================================================
+class EndingScene extends Phaser.Scene {
+    constructor(){super('Ending');}
+    create(){
+        this.cameras.main.fadeIn(800);
+        this.add.image(120,80,'loc_lake');
+
+        const gc=STATE.giftCharacter, pc=STATE.selectedCharacter;
+        const gChar=this.add.image(145,108,gc+'_front').setDepth(10);
+        const pChar=this.add.image(-10,118,pc+'_right').setDepth(10);
+
+        AUDIO.playBGM('ending');
+
+        // Player walks in
+        this.tweens.add({targets:pChar,x:105,duration:2000,ease:'Power2',
+            onUpdate:()=>{pChar.y=118+Math.sin(Date.now()/80)*0.4;},
+            onComplete:()=>{pChar.setTexture(pc+'_right');
+                this.time.delayedCall(400,()=>this.dialog(pChar,gChar));}});
+    }
+
+    dialog(pChar,gChar){
+        const pc=STATE.selectedCharacter,gc=STATE.giftCharacter;
+        const pn=pc==='kush'?'Kush':'Manna', gn=gc==='kush'?'Kush':'Manna';
+        const seq=[{s:pn,t:"I brought something\nspecial for you..."},{s:gn,t:"What is it?!"}];
+        let i=0;
+        const next=()=>{
+            if(i>=seq.length){this.closeDlg();this.giveGifts(pChar,gChar);return;}
+            this.showDlg(seq[i].s,seq[i].t,()=>{i++;this.time.delayedCall(200,next);});
+        };
+        next();
+    }
+
+    showDlg(speaker,text,cb){
+        this.closeDlg();
+        this._db=this.add.rectangle(120,139,236,42,0x0c0c20,0.92).setDepth(25).setStrokeStyle(1,0x4466aa);
+        this._dn=this.add.text(8,120,speaker,{fontFamily:'monospace',fontSize:'6px',color:'#ffdd44',stroke:'#000',strokeThickness:1}).setDepth(26);
+        this._dt=this.add.text(10,128,'',{fontFamily:'monospace',fontSize:'7px',color:'#fff',wordWrap:{width:205},lineSpacing:2}).setDepth(26);
+        this._da=this.add.text(228,154,'\u25BC',{fontFamily:'monospace',fontSize:'5px',color:'#fff'}).setOrigin(0.5).setDepth(26).setAlpha(0);
+
+        let done=false;
+        typewrite(this,this._dt,text,()=>{done=true;
+            this.tweens.add({targets:this._da,alpha:0.7,duration:400,yoyo:true,repeat:-1});},35);
+
+        const adv=()=>{
+            if(!done){this._dt.setText(text);done=true;this._da.setAlpha(0.7);return;}
+            this.input.off('pointerdown',adv);
+            this.input.keyboard.off('keydown-SPACE',adv);
+            this.input.keyboard.off('keydown-ENTER',adv);
+            AUDIO.playSelect(); cb();
+        };
+        this.input.on('pointerdown',adv);
+        this.input.keyboard.on('keydown-SPACE',adv);
+        this.input.keyboard.on('keydown-ENTER',adv);
+    }
+
+    closeDlg(){[this._db,this._dn,this._dt,this._da].forEach(o=>{if(o){o.destroy();}});this._db=this._dn=this._dt=this._da=null;}
+
+    giveGifts(pChar,gChar){
+        const items=STATE.collectedItems.slice();
+        let i=0;
+        const give=()=>{
+            if(i>=items.length){this.time.delayedCall(500,()=>this.showHearts(pChar,gChar));return;}
+            const it=items[i];
+            const sp=this.add.image(pChar.x,pChar.y-18,it+'_large').setDepth(15).setScale(0);
+            AUDIO.playSelect();
+            this.tweens.add({targets:sp,scaleX:1,scaleY:1,duration:200,ease:'Back.easeOut',onComplete:()=>{
+                this.tweens.add({targets:sp,x:gChar.x,y:gChar.y-12,duration:600,ease:'Cubic.easeInOut',onComplete:()=>{
+                    this.tweens.add({targets:sp,alpha:0,scaleX:0.3,scaleY:0.3,duration:200,onComplete:()=>{
+                        sp.destroy();i++;this.time.delayedCall(350,give);
+                    }});
+                }});
+            }});
+        };
+        give();
+    }
+
+    showHearts(pChar,gChar){
+        const cx=125,cy=52;
+        [{k:'heart_y',x:cx-20,d:0},{k:'heart_b',x:cx,d:600},{k:'heart_p',x:cx+20,d:1200}].forEach(h=>{
+            const s=this.add.image(h.x,cy,h.k).setDepth(20).setScale(0).setAlpha(0);
+            this.tweens.add({targets:s,scaleX:1.4,scaleY:1.4,alpha:1,duration:500,delay:h.d,ease:'Back.easeOut',
+                onStart:()=>AUDIO.playHeart()});
+            this.tweens.add({targets:s,scaleX:1.2,scaleY:1.2,duration:600,yoyo:true,repeat:-1,delay:h.d+500,ease:'Sine.easeInOut'});
+            this.tweens.add({targets:s,y:cy-2,duration:1200,yoyo:true,repeat:-1,delay:h.d+200,ease:'Sine.easeInOut'});
+        });
+
+        const gc=STATE.giftCharacter,pc=STATE.selectedCharacter;
+        const gn=gc==='kush'?'Kush':'Manna',pn=pc==='kush'?'Kush':'Manna';
+
+        this.time.delayedCall(2400,()=>{
+            this.showDlg(gn,"This is the sweetest\nthing ever...",()=>{
+                this.closeDlg();
+                this.time.delayedCall(300,()=>{
+                    this.showDlg(pn,"You deserve all of it\nand more.",()=>{
+                        this.closeDlg();
+                        this.time.delayedCall(1200,()=>this.endScreen());
+                    });
+                });
+            });
+        });
+    }
+
+    endScreen(){
+        AUDIO.stopBGM();
+        this.cameras.main.fadeOut(1500);
+        this.time.delayedCall(1500,()=>{
+            this.children.removeAll();
+            this.cameras.main.setBackgroundColor('#080810');
+            this.cameras.main.fadeIn(1000);
+
+            // Stars
+            for(let i=0;i<25;i++){
+                const s=this.add.rectangle(Phaser.Math.Between(0,240),Phaser.Math.Between(0,160),1,1,0xffffff)
+                    .setAlpha(Phaser.Math.FloatBetween(0.05,0.2));
+                this.tweens.add({targets:s,alpha:0,duration:Phaser.Math.Between(800,2000),yoyo:true,repeat:-1});
+            }
+
+            const logo=this.add.image(120,40,'logo').setScale(0.78).setAlpha(0);
+            this.tweens.add({targets:logo,alpha:1,duration:1000,delay:500});
+
+            const made=this.add.text(120,80,'Made with \u2764 for you',{fontFamily:'monospace',fontSize:'7px',color:'#ff8cb3'}).setOrigin(0.5).setAlpha(0);
+            this.tweens.add({targets:made,alpha:1,duration:1000,delay:1500});
+
+            ['heart_y','heart_b','heart_p'].forEach((k,i)=>{
+                const h=this.add.image(100+i*20,100,k).setAlpha(0).setScale(1.1);
+                this.tweens.add({targets:h,alpha:1,duration:500,delay:2000+i*300});
+                this.tweens.add({targets:h,y:98,duration:1000,yoyo:true,repeat:-1,delay:2500+i*200,ease:'Sine.easeInOut'});
+            });
+
+            const rp=this.add.text(120,135,'TAP TO PLAY AGAIN',{fontFamily:'monospace',fontSize:'6px',color:'#556'}).setOrigin(0.5).setAlpha(0);
+            this.tweens.add({targets:rp,alpha:1,duration:500,delay:3500});
+            this.tweens.add({targets:rp,alpha:0.3,duration:800,yoyo:true,repeat:-1,delay:4000});
+
+            this.time.delayedCall(3500,()=>{
+                const rst=()=>{AUDIO.playConfirm();STATE.currentLocation=0;STATE.collectedItems=[];
+                    this.cameras.main.fadeOut(500);this.time.delayedCall(500,()=>this.scene.start('Title'));};
+                this.input.on('pointerdown',rst);
+                this.input.keyboard.on('keydown-SPACE',rst);
+                this.input.keyboard.on('keydown-ENTER',rst);
+            });
+
+            AUDIO.playBGM('ending');
+        });
+    }
+}
+
+// ============================================================
+// GAME CONFIG
+// ============================================================
+new Phaser.Game({
+    type: Phaser.CANVAS,
+    width: 240,
+    height: 160,
+    parent: 'game',
+    pixelArt: true,
+    roundPixels: true,
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    backgroundColor: '#000000',
+    scene: [BootScene, TitleScene, SelectScene, LocationScene, EndingScene]
+});
+</script>
+</body>
+</html>
